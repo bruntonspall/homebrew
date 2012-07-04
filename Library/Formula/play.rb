@@ -1,14 +1,17 @@
 require 'formula'
 
-class Play <Formula
-  url 'http://download.playframework.org/releases/play-1.0.3.1.zip'
+class Play < Formula
   homepage 'http://www.playframework.org/'
-  md5 'b704cef8f2d8a68088ed0f80a4c4abe9'
+  url 'http://download.playframework.org/releases/play-2.0.2.zip'
+  md5 'd1408ffca1f35cc89167e0717dd31069'
 
   def install
-    rm Dir['*.bat']
+    rm Dir['*.bat'] # remove windows' bat files
     libexec.install Dir['*']
-    bin.mkpath
-    ln_s libexec+'play', bin
+    inreplace libexec+"play" do |s|
+      s.gsub! "$dir/", "$dir/../libexec/"
+      s.gsub! "dir=`dirname $PRG`", "dir=`dirname $0` && dir=$dir/`dirname $PRG`"
+    end
+    bin.install_symlink libexec+'play'
   end
 end

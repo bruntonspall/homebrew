@@ -1,59 +1,91 @@
 require 'formula'
 
 class GitManuals < Formula
-  url 'http://kernel.org/pub/software/scm/git/git-manpages-1.7.3.1.tar.bz2'
-  md5 '41a164c1ad025e0970b2365e27209a11'
+  url 'http://git-core.googlecode.com/files/git-manpages-1.7.11.1.tar.gz'
+  sha1 'e2defbf75ff15d7684d70457e41bc45fb22f0e1f'
 end
 
 class GitHtmldocs < Formula
-  url 'http://kernel.org/pub/software/scm/git/git-htmldocs-1.7.3.1.tar.bz2'
-  md5 'f9c9669fb00df38f1486763ace135666'
+  url 'http://git-core.googlecode.com/files/git-htmldocs-1.7.11.1.tar.gz'
+  sha1 'f7d288033a508f673824a52bc21073232e7c9736'
 end
 
 class Git < Formula
-  url 'http://kernel.org/pub/software/scm/git/git-1.7.3.1.tar.bz2'
-  md5 '77e1611498919965fb65fd1f229ee155'
   homepage 'http://git-scm.com'
+  url 'http://git-core.googlecode.com/files/git-1.7.11.1.tar.gz'
+  sha1 'd09664978931d215e43241689eb09371b509c7ce'
+
+  head 'https://github.com/git/git.git'
+
+  depends_on 'pcre' if ARGV.include? '--with-pcre'
+
+  def options
+    [
+      ['--with-blk-sha1', 'compile with the optimized SHA1 implementation'],
+      ['--with-pcre', 'compile with the PCRE library'],
+    ]
+  end
 
   def install
-    # if these things are installed, tell git build system to not use them
-    ENV['NO_FINK']='1'
-    ENV['NO_DARWIN_PORTS']='1'
-    # If local::lib is used you get a 'Only one of PREFIX or INSTALL_BASE can be given' error
-    ENV['PERL_MM_OPT']='';
-    # build verbosely so we can debug better
-    ENV['V']='1'
+    # If these things are installed, tell Git build system to not use them
+    ENV['NO_FINK'] = '1'
+    ENV['NO_DARWIN_PORTS'] = '1'
+    ENV['V'] = '1' # build verbosely
+    ENV['NO_R_TO_GCC_LINKER'] = '1' # pass arguments to LD correctly
+    ENV['NO_GETTEXT'] = '1'
+    ENV['PERL_PATH'] = which 'perl' # workaround for users of perlbrew
+    ENV['PYTHON_PATH'] = which 'python' # python can be brewed or unbrewed
 
-    inreplace "Makefile" do |s|
-      s.remove_make_var! %w{CFLAGS LDFLAGS}
+    # Clean XCode 4.x installs don't include Perl MakeMaker
+    ENV['NO_PERL_MAKEMAKER'] = '1' if MacOS.lion?
+
+    ENV['BLK_SHA1'] = '1' if ARGV.include? '--with-blk-sha1'
+
+    if ARGV.include? '--with-pcre'
+      ENV['USE_LIBPCRE'] = '1'
+      ENV['LIBPCREDIR'] = HOMEBREW_PREFIX
     end
 
-    system "make", "prefix=#{prefix}", "install"
+    system "make", "prefix=#{prefix}",
+                   "CC=#{ENV.cc}",
+                   "CFLAGS=#{ENV.cflags}",
+                   "LDFLAGS=#{ENV.ldflags}",
+                   "install"
 
-    # Install the git bash completion file.  Put it into the Cellar so
-    # that it gets upgraded along with git upgrades.  (Normally, etc
-    # files go directly into HOMEBREW_PREFIX so that they don't get
-    # clobbered on upgrade.)
+    # Install the OS X keychain credential helper
+    cd 'contrib/credential/osxkeychain' do
+      system "make", "CC=#{ENV.cc}",
+                     "CFLAGS=#{ENV.cflags}",
+                     "LDFLAGS=#{ENV.ldflags}"
+      bin.install 'git-credential-osxkeychain'
+      system "make", "clean"
+    end
 
+    # install the completion script first because it is inside 'contrib'
     (prefix+'etc/bash_completion.d').install 'contrib/completion/git-completion.bash'
+    (share+'git-core').install 'contrib'
 
-    # Install git-p4
-    bin.install 'contrib/fast-import/git-p4'
-
-    # these files are exact copies of the git binary, so like the contents
-    # of libexec/git-core lets hard link them
-    # I am assuming this is an overisght by the git devs
-    git_md5 = (bin+'git').md5
-    %w[git-receive-pack git-upload-archive].each do |fn|
-      fn = bin + fn
-      next unless git_md5 == fn.md5
-      fn.unlink
-      fn.make_link bin+'git'
-    end
-
-    # we could build the manpages ourselves, but the build process depends
-    # on many other packages, and is somewhat crazy, this way is easier
+    # We could build the manpages ourselves, but the build process depends
+    # on many other packages, and is somewhat crazy, this way is easier.
     GitManuals.new.brew { man.install Dir['*'] }
     GitHtmldocs.new.brew { (share+'doc/git-doc').install Dir['*'] }
+  end
+
+  def caveats; <<-EOS.undent
+    Bash completion has been installed to:
+      #{etc}/bash_completion.d
+
+    The OS X keychain credential helper has been installed to:
+      #{HOMEBREW_PREFIX}/bin/git-credential-osxkeychain
+
+    The 'contrib' directory has been installed to:
+      #{HOMEBREW_PREFIX}/share/git-core/contrib
+    EOS
+  end
+
+  def test
+    HOMEBREW_REPOSITORY.cd do
+      `#{bin}/git ls-files -- bin`.chomp == 'bin/brew'
+    end
   end
 end

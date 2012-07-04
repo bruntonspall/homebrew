@@ -1,38 +1,6 @@
-class ExecutionError <RuntimeError
-  attr :exit_status
-  attr :command
-
-  def initialize cmd, args = [], es = nil
-    @command = cmd
-    super "Failure while executing: #{cmd} #{pretty(args)*' '}"
-    @exit_status = es.exitstatus rescue 1
-  end
-
-  def was_running_configure?
-    @command == './configure'
-  end
-
-  private
-
-  def pretty args
-    args.collect do |arg|
-      if arg.to_s.include? ' '
-        "'#{ arg.gsub "'", "\\'" }'"
-      else
-        arg
-      end
-    end
-  end
-end
-
-class BuildError <ExecutionError
-  attr :env
-
-  def initialize cmd, args = [], es = nil
-    super
-    @env = ENV.to_hash
-  end
-end
+require 'pathname'
+require 'exceptions'
+require 'macos'
 
 class Tty
   class <<self
@@ -42,7 +10,12 @@ class Tty
     def yellow; underline 33 ; end
     def reset; escape 0; end
     def em; underline 39; end
-    
+    def green; color 92 end
+
+    def width
+      `/usr/bin/tput cols`.strip.to_i
+    end
+
   private
     def color n
       escape "0;#{n}"
@@ -61,9 +34,14 @@ end
 
 # args are additional inputs to puts until a nil arg is encountered
 def ohai title, *sput
-  title = title.to_s[0, `/usr/bin/tput cols`.strip.to_i-4] unless ARGV.verbose?
+  title = title.to_s[0, Tty.width - 4] if $stdout.tty? unless ARGV.verbose?
   puts "#{Tty.blue}==>#{Tty.white} #{title}#{Tty.reset}"
-  puts *sput unless sput.empty?
+  puts sput unless sput.empty?
+end
+
+def oh1 title
+  title = title.to_s[0, Tty.width - 4] if $stdout.tty? unless ARGV.verbose?
+  puts "#{Tty.green}==> #{Tty.reset}#{title}"
 end
 
 def opoo warning
@@ -73,7 +51,17 @@ end
 def onoe error
   lines = error.to_s.split'\n'
   puts "#{Tty.red}Error#{Tty.reset}: #{lines.shift}"
-  puts *lines unless lines.empty?
+  puts lines unless lines.empty?
+end
+
+def ofail error
+  onoe error
+  Homebrew.failed = true
+end
+
+def odie error
+  onoe error
+  exit 1
 end
 
 def pretty_duration s
@@ -112,7 +100,10 @@ end
 
 # Kernel.system but with exceptions
 def safe_system cmd, *args
-  raise ExecutionError.new(cmd, args, $?) unless Homebrew.system(cmd, *args)
+  unless Homebrew.system cmd, *args
+    args = args.map{ |arg| arg.to_s.gsub " ", "\\ " } * " "
+    raise ErrorDuringExecution, "Failure while executing: #{cmd} #{args}"
+  end
 end
 
 # prints no output
@@ -124,11 +115,24 @@ def quiet_system cmd, *args
 end
 
 def curl *args
-  safe_system 'curl', '-f#LA', HOMEBREW_USER_AGENT, *args unless args.empty?
+  curl = Pathname.new '/usr/bin/curl'
+  raise "#{curl} is not executable" unless curl.exist? and curl.executable?
+
+  args = [HOMEBREW_CURL_ARGS, HOMEBREW_USER_AGENT, *args]
+  # See https://github.com/mxcl/homebrew/issues/6103
+  args << "--insecure" if MacOS.version < 10.6
+  args << "--verbose" if ENV['HOMEBREW_CURL_VERBOSE']
+  args << "--silent" unless $stdout.tty?
+
+  safe_system curl, *args
 end
 
-def puts_columns items, cols = 4
+def puts_columns items, star_items=[]
   return if items.empty?
+
+  if star_items && star_items.any?
+    items = items.map{|item| star_items.include?(item) ? "#{item}*" : item}
+  end
 
   if $stdout.tty?
     # determine the best width to display for different console sizes
@@ -140,88 +144,53 @@ def puts_columns items, cols = 4
 
     IO.popen("/usr/bin/pr -#{cols} -t -w#{console_width}", "w"){|io| io.puts(items) }
   else
-    puts *items
+    puts items
   end
+end
+
+def which cmd
+  path = `/usr/bin/which #{cmd} 2>/dev/null`.chomp
+  if path.empty?
+    nil
+  else
+    Pathname.new(path)
+  end
+end
+
+def which_editor
+  editor = ENV['HOMEBREW_EDITOR'] || ENV['EDITOR']
+  # If an editor wasn't set, try to pick a sane default
+  return editor unless editor.nil?
+
+  # Find Textmate
+  return 'mate' if which "mate"
+  # Find # BBEdit / TextWrangler
+  return 'edit' if which "edit"
+  # Default to vim
+  return '/usr/bin/vim'
 end
 
 def exec_editor *args
-  editor = ENV['HOMEBREW_EDITOR'] || ENV['EDITOR']
-  if editor.nil?
-    if system "/usr/bin/which -s mate"
-      # TextMate
-      editor='mate'
-    elsif system "/usr/bin/which -s edit"
-      # BBEdit / TextWrangler
-      editor='edit'
-    else
-      # Default to vim
-      editor='/usr/bin/vim'
-    end
-  end
-  # we split the editor because especially on mac "mate -w" is common
-  # but we still want to use the comma-delimited version of exec because then
-  # we don't have to escape args, and escaping 100% is tricky
-  exec *(editor.split+args)
+  return if args.to_s.empty?
+
+  # Invoke bash to evaluate env vars in $EDITOR
+  # This also gets us proper argument quoting.
+  # See: https://github.com/mxcl/homebrew/issues/5123
+  system "bash", "-c", which_editor + ' "$@"', "--", *args
 end
 
-# GZips the given path, and returns the gzipped file
+# GZips the given paths, and returns the gzipped paths
 def gzip *paths
   paths.collect do |path|
     system "/usr/bin/gzip", path
-    Pathname.new(path+".gz")
-  end
-end
-
-module ArchitectureListExtension
-  def universal?
-    self.include? :i386 and self.include? :x86_64
+    Pathname.new("#{path}.gz")
   end
 end
 
 # Returns array of architectures that the given command or library is built for.
 def archs_for_command cmd
-  cmd = cmd.to_s # If we were passed a Pathname, turn it into a string.
-  cmd = `/usr/bin/which #{cmd}` unless Pathname.new(cmd).absolute?
-  cmd.gsub! ' ', '\\ '  # Escape spaces in the filename.
-
-  archs = IO.popen("/usr/bin/file -L #{cmd}").readlines.inject([]) do |archs, line|
-    case line
-    when /Mach-O (executable|dynamically linked shared library) ppc/
-      archs << :ppc7400
-    when /Mach-O 64-bit (executable|dynamically linked shared library) ppc64/
-      archs << :ppc64
-    when /Mach-O (executable|dynamically linked shared library) i386/
-      archs << :i386
-    when /Mach-O 64-bit (executable|dynamically linked shared library) x86_64/
-      archs << :x86_64
-    else
-      archs
-    end
-  end
-  archs.extend(ArchitectureListExtension)
-end
-
-# String extensions added by inreplace below.
-module HomebrewInreplaceExtension
-  # Looks for Makefile style variable defintions and replaces the
-  # value with "new_value", or removes the definition entirely.
-  def change_make_var! flag, new_value
-    new_value = "#{flag}=#{new_value}"
-    gsub! Regexp.new("^#{flag}[ \\t]*=[ \\t]*(.*)$"), new_value
-  end
-  # Removes variable assignments completely.
-  def remove_make_var! flags
-    flags.each do |flag|
-      # Also remove trailing \n, if present.
-      gsub! Regexp.new("^#{flag}[ \\t]*=(.*)$\n?"), ""
-    end
-  end
-  # Finds the specified variable
-  def get_make_var flag
-    m = match Regexp.new("^#{flag}[ \\t]*=[ \\t]*(.*)$")
-    return m[1] if m
-    return nil
-  end
+  cmd = which(cmd) unless Pathname.new(cmd).absolute?
+  Pathname.new(cmd).archs
 end
 
 def inreplace path, before=nil, after=nil
@@ -230,10 +199,14 @@ def inreplace path, before=nil, after=nil
     s = f.read
 
     if before == nil and after == nil
-      s.extend(HomebrewInreplaceExtension)
+      s.extend(StringInreplaceExtension)
       yield s
     else
-      s.gsub!(before, after)
+      sub = s.gsub!(before, after)
+      if sub.nil?
+        opoo "inreplace in '#{path}' failed"
+        puts "Expected replacement of '#{before}' with '#{after}'"
+      end
     end
 
     f.reopen(path, 'w').write(s)
@@ -263,28 +236,46 @@ def nostdout
   end
 end
 
-def dump_build_env env
-  puts "\"--use-llvm\" was specified" if ARGV.include? '--use-llvm'
+module GitHub extend self
+  def issues_for_formula name
+    # bit basic as depends on the issue at github having the exact name of the
+    # formula in it. Which for stuff like objective-caml is unlikely. So we
+    # really should search for aliases too.
 
-  %w[ CC CXX LD ].each do |k|
-    value = env[k]
-    if value
-      results = value
-      if File.exists? value and File.symlink? value
-        target = Pathname.new(value)
-        results += " => #{target.realpath}"
+    name = f.name if Formula === name
+
+    require 'open-uri'
+    require 'vendor/multi_json'
+
+    issues = []
+
+    uri = URI.parse("https://api.github.com/legacy/issues/search/mxcl/homebrew/open/#{name}")
+
+    open uri do |f|
+      MultiJson.decode(f.read)['issues'].each do |issue|
+        # don't include issues that just refer to the tool in their body
+        issues << issue['html_url'] if issue['title'].include? name
       end
-      puts "#{k}: #{results}"
     end
+
+    issues
+  rescue
+    []
   end
 
-  %w[ CFLAGS CXXFLAGS CPPFLAGS LDFLAGS MACOSX_DEPLOYMENT_TARGET MAKEFLAGS PKG_CONFIG_PATH
-      HOMEBREW_DEBUG HOMEBREW_VERBOSE HOMEBREW_USE_LLVM HOMEBREW_SVN ].each do |k|
-    value = env[k]
-    puts "#{k}: #{value}" if value
-  end
-end
+  def find_pull_requests rx
+    require 'open-uri'
+    require 'vendor/multi_json'
 
-def x11_installed?
-  Pathname.new('/usr/X11/lib/libpng.dylib').exist?
+    query = rx.source.delete('.*').gsub('\\', '')
+    uri = URI.parse("https://api.github.com/legacy/issues/search/mxcl/homebrew/open/#{query}")
+
+    open uri do |f|
+      MultiJson.decode(f.read)['issues'].each do |pull|
+        yield pull['pull_request_url'] if rx.match pull['title'] and pull['pull_request_url']
+      end
+    end
+  rescue
+    nil
+  end
 end

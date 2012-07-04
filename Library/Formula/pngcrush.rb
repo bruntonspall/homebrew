@@ -1,17 +1,18 @@
 require 'formula'
 
-class Pngcrush <Formula
+class Pngcrush < Formula
   homepage 'http://pmt.sourceforge.net/pngcrush/'
-  url 'http://downloads.sourceforge.net/project/pmt/pngcrush/00-1.7.12/pngcrush-1.7.12.tar.bz2'
-  md5 '16d2eab491a13c1bc32d763e3d21e85b'
+  url 'http://downloads.sourceforge.net/project/pmt/pngcrush/1.7.28/pngcrush-1.7.28.tar.bz2'
+  sha1 '9cac6bd1b88fc24dc08996678e7a9eecb3ecd10c'
 
   def install
-    # use our CFLAGS, LDFLAGS, CC, and LD
-    inreplace 'Makefile' do |s|
-      s.remove_make_var! %w[CFLAGS LDFLAGS CC LD]
-    end
+    # Required to successfully build the bundled zlib 1.2.6
+    ENV.append_to_cflags "-DZ_SOLO"
 
-    system "make"
+    system "make", "CC=#{ENV.cc}",
+                   "LD=#{ENV.cc}",
+                   "CFLAGS=#{ENV.cflags}",
+                   "LDFLAGS=#{ENV.ldflags}"
     bin.install 'pngcrush'
   end
 end

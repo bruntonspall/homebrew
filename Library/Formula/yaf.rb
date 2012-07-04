@@ -1,19 +1,17 @@
 require 'formula'
 
-class Yaf <Formula
-  url 'http://tools.netsa.cert.org/releases/yaf-1.0.0.2.tar.gz'
+class Yaf < Formula
   homepage 'http://tools.netsa.cert.org/yaf/'
-  md5 '3ea2dd554025ba9978c914386dd59d9c'
+  url 'http://tools.netsa.cert.org/releases/yaf-2.2.2.tar.gz'
+  sha1 '03ea518d322d3ce76f312a71e5e444eb5a6a7273'
 
+  depends_on 'pkg-config' => :build
   depends_on 'glib'
   depends_on 'libfixbuf'
 
   def install
-    fails_with_llvm "Please see http://github.com/mxcl/homebrew/issues/issue/2215 for details."
-
-    system "./configure", "--disable-debug", "--disable-dependency-tracking",
-                          "--prefix=#{prefix}",
-                          "--mandir=#{man}"
+    system './configure', "--disable-dependency-tracking",
+                          "--prefix=#{prefix}"
     system "make"
     system "make install"
   end

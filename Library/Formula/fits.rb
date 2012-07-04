@@ -1,9 +1,9 @@
 require 'formula'
 
-class Fits <Formula
-  url 'http://fits.googlecode.com/files/fits-0.4.2.zip'
+class Fits < Formula
   homepage 'http://code.google.com/p/fits/'
-  md5 'd5a2aba74c701d7c91e6f69bcb72a8f2'
+  url 'http://fits.googlecode.com/files/fits-0.6.1.zip'
+  sha1 '528be5e8d68c468ea1ea45c4812c15da8f52e9f4'
 
   def install
     inreplace 'fits.sh' do |s|

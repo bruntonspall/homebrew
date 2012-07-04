@@ -1,15 +1,21 @@
 require 'formula'
 
-class Gdbm <Formula
-  url 'ftp://ftp.gnu.org/gnu/gdbm/gdbm-1.8.3.tar.gz'
+class Gdbm < Formula
   homepage 'http://www.gnu.org/software/gdbm/'
-  md5 '1d1b1d5c0245b1c00aff92da751e9aa1'
+  url 'http://ftpmirror.gnu.org/gdbm/gdbm-1.10.tar.gz'
+  mirror 'http://ftp.gnu.org/gnu/gdbm/gdbm-1.10.tar.gz'
+  md5 '88770493c2559dc80b561293e39d3570'
+
+  def options
+    [["--universal", "Build a universal binary."]]
+  end
 
   def install
-    system "./configure", "--disable-debug", "--disable-dependency-tracking",
+    ENV.universal_binary if ARGV.build_universal?
+    system "./configure", "--disable-dependency-tracking",
                           "--prefix=#{prefix}",
-                          "--mandir=#{man}", "--infodir=#{info}"
-    inreplace "Makefile", "-o $(BINOWN) -g $(BINGRP)", ""
+                          "--mandir=#{man}",
+                          "--infodir=#{info}"
     system "make install"
   end
 end

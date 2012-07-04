@@ -1,23 +1,34 @@
 require 'formula'
-require 'hardware'
 
-class Mongodb <Formula
+class Mongodb < Formula
   homepage 'http://www.mongodb.org/'
 
-  if Hardware.is_64_bit? and not ARGV.include? '--32bit'
-    url 'http://fastdl.mongodb.org/osx/mongodb-osx-x86_64-1.6.3.tgz'
-    md5 'da6a3a1e52e2ec7134a75b857ad540e8'
-    version '1.6.3-x86_64'
+  if Hardware.is_64_bit? and not ARGV.build_32_bit?
+    url 'http://fastdl.mongodb.org/osx/mongodb-osx-x86_64-2.0.6.tgz'
+    md5 '84e592882003bed6249d258203fd0473'
+    version '2.0.6-x86_64'
+
+    devel do
+        url 'http://fastdl.mongodb.org/osx/mongodb-osx-x86_64-2.1.2.tgz'
+        md5 '1114ff57e8cb70eb71a296358973f1db'
+        version '2.1.2-x86_64'
+    end
   else
-    url 'http://fastdl.mongodb.org/osx/mongodb-osx-i386-1.6.3.tgz'
-    md5 '6f8244f0bc3a842d16f92e5f7fa33e98'
-    version '1.6.3-i386'
+    url 'http://fastdl.mongodb.org/osx/mongodb-osx-i386-2.0.6.tgz'
+    md5 'a970a8e6c6de5d655816123b0c8f5718'
+    version '2.0.6-i386'
+
+    devel do
+        url 'http://fastdl.mongodb.org/osx/mongodb-osx-i386-2.1.2.tgz'
+        md5 '418c5d0cd96fb579e0e97aeeaed63694'
+        version '2.1.2-i386'
+    end
   end
 
   skip_clean :all
 
   def options
-    [['--32bit', 'Install the 32-bit version.']]
+    [['--32-bit', 'Build 32-bit only.']]
   end
 
   def install
@@ -30,32 +41,38 @@ class Mongodb <Formula
 
     # Write the configuration files and launchd script
     (prefix+'mongod.conf').write mongodb_conf
-    (prefix+'org.mongodb.mongod.plist').write startup_plist
+    plist_path.write startup_plist
+    plist_path.chmod 0644
+
+    # copy the config file to etc if this is the first install.
+    etc.install prefix+'mongod.conf' unless File.exists? etc+"mongod.conf"
   end
 
-  def caveats; <<-EOS
-If this is your first install, automatically load on login with:
-    cp #{prefix}/org.mongodb.mongod.plist ~/Library/LaunchAgents
-    launchctl load -w ~/Library/LaunchAgents/org.mongodb.mongod.plist
+  def caveats; <<-EOS.undent
+    If this is your first install, automatically load on login with:
+        mkdir -p ~/Library/LaunchAgents
+        cp #{plist_path} ~/Library/LaunchAgents/
+        launchctl load -w ~/Library/LaunchAgents/#{plist_path.basename}
 
-If this is an upgrade and you already have the org.mongodb.mongod.plist loaded:
-    launchctl unload -w ~/Library/LaunchAgents/org.mongodb.mongod.plist
-    cp #{prefix}/org.mongodb.mongod.plist ~/Library/LaunchAgents
-    launchctl load -w ~/Library/LaunchAgents/org.mongodb.mongod.plist
+    If this is an upgrade and you already have the #{plist_path.basename} loaded:
+        launchctl unload -w ~/Library/LaunchAgents/#{plist_path.basename}
+        cp #{plist_path} ~/Library/LaunchAgents/
+        launchctl load -w ~/Library/LaunchAgents/#{plist_path.basename}
 
-Or start it manually:
-    mongod run --config #{prefix}/mongod.conf
-EOS
+    Or start it manually:
+        mongod run --config #{etc}/mongod.conf
+
+    The launchctl plist above expects the config file to be at #{etc}/mongod.conf.
+    EOS
   end
 
-  def mongodb_conf
-    return <<-EOS
-# Store data in #{var}/mongodb instead of the default /data/db
-dbpath = #{var}/mongodb
+  def mongodb_conf; <<-EOS.undent
+    # Store data in #{var}/mongodb instead of the default /data/db
+    dbpath = #{var}/mongodb
 
-# Only accept local connections
-bind_ip = 127.0.0.1
-EOS
+    # Only accept local connections
+    bind_ip = 127.0.0.1
+    EOS
   end
 
   def startup_plist
@@ -65,18 +82,18 @@ EOS
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>org.mongodb.mongod</string>
+  <string>#{plist_name}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>#{bin}/mongod</string>
+    <string>#{HOMEBREW_PREFIX}/bin/mongod</string>
     <string>run</string>
     <string>--config</string>
-    <string>#{prefix}/mongod.conf</string>
+    <string>#{etc}/mongod.conf</string>
   </array>
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <true/>
+  <false/>
   <key>UserName</key>
   <string>#{`whoami`.chomp}</string>
   <key>WorkingDirectory</key>

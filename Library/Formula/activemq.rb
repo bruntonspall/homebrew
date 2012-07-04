@@ -1,16 +1,16 @@
 require 'formula'
 
-class Activemq <Formula
-  url 'http://www.gossipcheck.com/mirrors/apache/activemq/apache-activemq/5.4.0/apache-activemq-5.4.0-bin.tar.gz'
+class Activemq < Formula
   homepage 'http://activemq.apache.org/'
-  md5 'ac68cb3fee593b6e0267679c6f8e1eff'
+  url 'http://www.apache.org/dyn/closer.cgi?path=activemq/apache-activemq/5.6.0/apache-activemq-5.6.0-bin.tar.gz'
+  sha1 '3205f5fcd61cf8bc7122b2f65ce22f68b2ab487a'
 
   skip_clean 'libexec/webapps/admin/WEB-INF/jsp'
 
   def startup_script name
     <<-EOS.undent
       #!/bin/bash
-      exec #{libexec}/bin/#{name} $@
+      exec "#{libexec}/bin/#{name}" "$@"
     EOS
   end
 
@@ -21,5 +21,6 @@ class Activemq <Formula
     libexec.install Dir['*']
 
     (bin+'activemq-admin').write startup_script('activemq-admin')
+    (bin+'activemq').write startup_script('activemq')
   end
 end

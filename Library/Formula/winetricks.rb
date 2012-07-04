@@ -1,16 +1,18 @@
 require 'formula'
 
 class Winetricks < ScriptFileFormula
-  url 'http://www.kegel.com/wine/winetricks', :using => :curl
-  homepage 'http://wiki.winehq.org/winetricks'
-  version '20101008'
+  homepage 'http://code.google.com/p/winetricks/'
+  url 'http://winetricks.googlecode.com/svn-history/r832/trunk/src/winetricks', :using => :curl
+  version '20120308-r832'
+  # since the version stated in the field is seldom updated, we append the revision number
 
-  head 'http://winezeug.googlecode.com/svn/trunk/winetricks', :using => :curl
+  head 'http://winetricks.googlecode.com/svn/trunk/src/winetricks', :using => :curl
 
-  if ARGV.build_head?
-    md5 'c42ee409c7c4b71dfd4ee326aab8e14c'
-  else
-    md5 '2953c076ab699a659d06a4790a2ab602'
+  depends_on 'cabextract'
+
+  # Don't provide a hash for the HEAD build
+  unless ARGV.build_head?
+    sha256 '3ca2eb2afb09d895a3689cce24b78e76254f86c7b60b3cb582dc14fd89212e97'
   end
 
   def caveats; <<-EOS.undent

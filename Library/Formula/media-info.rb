@@ -1,26 +1,32 @@
 require 'formula'
 
-class MediaInfo <Formula
-  url 'http://downloads.sourceforge.net/sourceforge/mediainfo/MediaInfo_CLI_0.7.8_GNU_FromSource.tar.bz2'
+class MediaInfo < Formula
   homepage 'http://mediainfo.sourceforge.net'
-  version '0.7.8'
-  md5 '9df4cf265802bae929450954f15a46d1'
+  url 'http://downloads.sourceforge.net/mediainfo/MediaInfo_CLI_0.7.58_GNU_FromSource.tar.bz2'
+  md5 'c332b376fe397531be894287ec97aab2'
 
   depends_on 'pkg-config' => :build
 
   def install
-    root_dir = Dir.pwd
+    cd 'ZenLib/Project/GNU/Library' do
+      system "./configure", "--disable-debug", "--disable-dependency-tracking",
+                            "--prefix=#{prefix}"
+      system "make"
+    end
 
-    Dir.chdir root_dir + '/ZenLib/Project/GNU/Library'
-    system "./configure", "--disable-debug", "--disable-dependency-tracking", "--prefix=#{prefix}"
-    system "make"
+    cd "MediaInfoLib/Project/GNU/Library" do
+      args = ["--disable-debug",
+              "--disable-dependency-tracking",
+              "--with-libcurl",
+              "--prefix=#{prefix}"]
+      system "./configure", *args
+      system "make install"
+    end
 
-    Dir.chdir root_dir + "/MediaInfoLib/Project/GNU/Library"
-    system "./configure", "--disable-debug", "--disable-dependency-tracking", "--prefix=#{prefix}"
-    system "make install"
-
-    Dir.chdir root_dir + "/MediaInfo/Project/GNU/CLI"
-    system "./configure", "--disable-debug", "--disable-dependency-tracking", "--prefix=#{prefix}"
-    system "make install"
+    cd "MediaInfo/Project/GNU/CLI" do
+      system "./configure", "--disable-debug", "--disable-dependency-tracking",
+                            "--prefix=#{prefix}"
+      system "make install"
+    end
   end
 end

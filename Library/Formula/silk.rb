@@ -1,17 +1,16 @@
 require 'formula'
 
-class Silk <Formula
-  url 'http://tools.netsa.cert.org/releases/silk-2.3.1.tar.gz'
+class Silk < Formula
   homepage 'http://tools.netsa.cert.org/silk/'
-  md5 'f49ca6da333e5d579347af858e6a1b83'
+  url 'http://tools.netsa.cert.org/releases/silk-2.4.7.tar.gz'
+  sha1 '2ff0cd1d00de70f667728830aa3e920292e99aec'
 
+  depends_on 'pkg-config' => :build
   depends_on 'glib'
   depends_on 'libfixbuf'
   depends_on 'yaf'
 
   def install
-    fails_with_llvm "Please see http://github.com/mxcl/homebrew/issues/issue/2215 for details."
-
     system "./configure", "--disable-dependency-tracking",
                           "--prefix=#{prefix}",
                           "--mandir=#{man}",
